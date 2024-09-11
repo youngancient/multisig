@@ -15,7 +15,8 @@ contract MultiSig is ReentrancyGuard {
     enum TxType {
         TransferValue,
         UpdateQuorum,
-        UpdateValidSigners
+        UpdateValidSigners,
+        deleteValidSigner
     }
 
     // remove public
@@ -151,6 +152,12 @@ contract MultiSig is ReentrancyGuard {
         emit MyEvents.TransactionCompleted(msg.sender, _receiver, _value);
     }
 
+    function _deleteValidSigner(address _validSigner) private {
+        validSigners[_validSigner] = false;
+        noOfValidSigners -= 1;
+        emit MyEvents.DeleteSignerSuccessful(msg.sender, _validSigner);
+    }
+
     function _updateValidSigners(address _newValidSigner) private {
         validSigners[_newValidSigner] = true;
         noOfValidSigners += 1;
@@ -189,7 +196,7 @@ contract MultiSig is ReentrancyGuard {
 
         Transaction storage trx = transactions[_transactionId];
 
-        if(trx.isCompleted){
+        if (trx.isCompleted) {
             revert Errors.TransactionCompletedAlready();
         }
 
@@ -198,33 +205,28 @@ contract MultiSig is ReentrancyGuard {
         trx.noOfApprovals += 1;
         trx.transactionSigners.push(msg.sender);
 
-        // check the type of transaction
-        if (trx.transactionType == TxType.TransferValue) {
-            if (trx.noOfApprovals == quorum) {
+        if (trx.noOfApprovals == quorum) {
+            trx.isCompleted = true;
+
+            // check the type of transaction
+            if (trx.transactionType == TxType.TransferValue) {
                 if (getContractERC20Balance(trx.tokenAddress) < trx.amount) {
                     revert Errors.InSufficientTokenBalance();
                 }
-                trx.isCompleted = true;
-
                 // @dev : INTERACTION
                 _transfer(trx.receiver, trx.amount, trx.tokenAddress);
-            }
-
-        } else if (trx.transactionType == TxType.UpdateQuorum) {
-            if (trx.noOfApprovals == quorum) {
-                trx.isCompleted = true;
-
+            } else if (trx.transactionType == TxType.UpdateQuorum) {
                 // calls the update function. this function carries out the necessary checks
                 // @dev : INTERACTION
                 _updateQuorum(uint8(trx.amount));
-            }
-        } else if (trx.transactionType == TxType.UpdateValidSigners) {
-            if (trx.noOfApprovals == quorum) {
-                trx.isCompleted = true;
-
+            } else if (trx.transactionType == TxType.UpdateValidSigners) {
                 // the receiver in this case the the address of the newSigner to be added
                 // @dev : INTERACTION
                 _updateValidSigners(trx.receiver);
+            } else if (trx.transactionType == TxType.deleteValidSigner) {
+                // the receiver in this case the the address of the newSigner to be added
+                // @dev : INTERACTION
+                _deleteValidSigner(trx.receiver);
             }
         }
     }
@@ -265,7 +267,7 @@ contract MultiSig is ReentrancyGuard {
         sanityCheck(msg.sender);
         zeroValueCheck(_newQuorum);
 
-        if(_newQuorum <= 1){
+        if (_newQuorum <= 1) {
             revert Errors.QuorumTooSmall();
         }
 
@@ -329,5 +331,42 @@ contract MultiSig is ReentrancyGuard {
 
         txCounter += 1;
         emit MyEvents.UpdateValidSignersInitiated(msg.sender, _newValidSigner);
+    }
+
+    function initiateDeleteSigner(address _validSigner) external {
+        sanityCheck(msg.sender);
+        sanityCheck(_validSigner);
+        // checks if msg.sender is a valid signer
+        if (!validSigners[msg.sender]) {
+            revert Errors.NotAValidSigner();
+        }
+        if (!validSigners[_validSigner]) {
+            revert Errors.NotAValidSigner();
+        }
+
+        uint8 _newNoOfValidSigners = noOfValidSigners - 1;
+        // we check if the new number of valid signers is greater of equal to the Quorum
+        if (quorum > _newNoOfValidSigners) {
+            revert Errors.QuorumCannotBeMoreThanValidSigners();
+        }
+
+        uint _id = txCounter + 1;
+        Transaction storage trx = transactions[_id];
+        trx.amount = 0; // the amount here in the tx is assigned to zero
+        trx.id = _id;
+        trx.sender = msg.sender;
+        trx.tokenAddress = address(0); // doing this because we don't need it
+        trx.receiver = _validSigner; // the receiver is set as the newValidSigner
+        trx.timestamp = block.timestamp;
+        trx.isCompleted = false;
+        trx.transactionType = TxType.deleteValidSigner;
+        trx.noOfApprovals += 1;
+
+        // To ensure that the person who creates the transaction cannot sign again
+        // this is because by initiating the transaction, he is an approver by default
+        hasUserSignedTransaction[msg.sender][_id] = true;
+        trx.transactionSigners.push(msg.sender);
+
+        txCounter += 1;
     }
 }

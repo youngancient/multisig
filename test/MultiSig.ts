@@ -107,6 +107,16 @@ describe("MultiSig Contract", function () {
       ).to.be.revertedWithCustomError(multiSig, "ZeroAddressNotAllowed");
     });
 
+    it("Should revert when called by invalid signer", async function () {
+      const { multiSig, owner, addr1, addr6, token, quorum, validSigners } =
+        await loadFixture(deployMultiSig);
+      const amount = ethers.parseUnits("100", 18);
+
+      await expect(
+        multiSig.connect(addr6).initiateTransfer(addr1.address, amount, token)
+      ).to.be.revertedWithCustomError(multiSig, "NotAValidSigner");
+    });
+
     it("Should initiate transaction successfully", async function () {
       const { multiSig, owner, addr1, token, quorum, validSigners } =
         await loadFixture(deployMultiSig);
@@ -291,7 +301,7 @@ describe("MultiSig Contract", function () {
     it("Should initiate Quorum update transaction successfully", async function () {
       const { multiSig, owner, addr1, token, quorum, validSigners } =
         await loadFixture(deployMultiSig);
-      const amount = ethers.parseUnits("100", 18);
+
       const txCount = 1;
 
       const contractAddress = await multiSig.getAddress();
@@ -308,6 +318,56 @@ describe("MultiSig Contract", function () {
       expect(tx.receiver).to.equal(contractAddress);
       expect(tx.amount).to.equal(newQuorum);
       expect(tx.isCompleted).to.equal(false);
+    });
+  });
+
+  describe("Approve Update Quorum", function () {
+    it("Should approve an update Quorum transaction successfully", async function () {
+      const { multiSig, owner, token, addr1, addr5 } = await loadFixture(
+        deployMultiSig
+      );
+
+      const newQuorum = 4;
+      // owner initiates a transfer to addr1
+      await multiSig.initiateUpdateQuorum(newQuorum);
+
+      const txCount = 1;
+      const txId = 1;
+
+      await multiSig.connect(addr1).approve(txId);
+
+      await expect((await multiSig.transactions(txId)).noOfApprovals).to.equal(
+        txCount + 1
+      );
+    });
+
+    it("Should update the Quorum successfully if old Quorum is reached", async function () {
+      const { multiSig, owner, token, addr1, addr2, addr3, addr4, quorum } =
+        await loadFixture(deployMultiSig);
+      // deposit tokens to the contract
+      const newQuorum = 4;
+      const oldQuorum = quorum;
+
+      // owner initiates a transfer to addr1
+      await multiSig.initiateUpdateQuorum(newQuorum);
+
+      const txId = 1;
+
+      await multiSig.connect(addr1).approve(txId);
+      await multiSig.connect(addr2).approve(txId);
+
+      const tx = await multiSig.transactions(txId);
+
+      // we expect the old quorum to have been reached
+      await expect(tx.noOfApprovals).to.equal(oldQuorum);
+
+      // we expect the transaction to be complete
+      expect(tx.isCompleted).to.equal(true);
+
+      const updatedQuorum = await multiSig.quorum();
+
+      // the new quorum has been set
+      expect(updatedQuorum).to.equal(newQuorum);
     });
   });
 
@@ -357,6 +417,174 @@ describe("MultiSig Contract", function () {
       expect(tx.receiver).to.equal(newValidSigner);
       expect(tx.amount).to.equal(0);
       expect(tx.isCompleted).to.equal(false);
+    });
+  });
+
+  describe("Approve Update Valid Signers", function () {
+    it("Should approve an update Valid Signers transaction successfully", async function () {
+      const { multiSig, owner, token, addr1, addr6 } = await loadFixture(
+        deployMultiSig
+      );
+
+      const newValidSigner = addr6;
+      // owner initiates an update valid signers to addr1
+      await multiSig.initiateUpdateValidSigners(newValidSigner);
+
+      const txCount = 1;
+      const txId = 1;
+
+      await multiSig.connect(addr1).approve(txId);
+
+      await expect((await multiSig.transactions(txId)).noOfApprovals).to.equal(
+        txCount + 1
+      );
+    });
+
+    it("Should update valid signers successfully if quorum is reached", async function () {
+      const { multiSig, owner, token, addr1, addr2, addr3, addr6, quorum } =
+        await loadFixture(deployMultiSig);
+      // deposit tokens to the contract
+      const newValidSigner = addr6;
+
+      // no of valid signers before
+      const formerNoOfValidSigners = await multiSig.noOfValidSigners();
+
+      // owner initiates an update valid signers to addr1
+      await multiSig.initiateUpdateValidSigners(newValidSigner);
+
+      const txId = 1;
+
+      await multiSig.connect(addr1).approve(txId);
+      await multiSig.connect(addr2).approve(txId);
+
+      const tx = await multiSig.transactions(txId);
+
+      // we expect the old quorum to have been reached
+      await expect(tx.noOfApprovals).to.equal(quorum);
+
+      const newNoOfValidSigners = await multiSig.noOfValidSigners();
+
+      await expect(newNoOfValidSigners).to.equal(
+        formerNoOfValidSigners + BigInt(1)
+      );
+      // we expect the transaction to be complete
+      expect(tx.isCompleted).to.equal(true);
+
+      await expect(await multiSig.validSigners(newValidSigner)).to.equal(true);
+    });
+  });
+
+  describe("Initiate Delete Valid Signer", function () {
+    //"Should check that deployment fails if the quorum is greater than the noOfValidSigners "
+    it("Should revert if the new Number of valid signers would be less than the current quorum", async function () {
+      const [owner, addr1, addr2, addr3, addr4, addr5, addr6] =
+        await hre.ethers.getSigners();
+
+      const multiSIG = await hre.ethers.getContractFactory("MultiSig");
+
+      const validSigners = [
+        owner.address,
+        addr1.address,
+        addr2.address,
+        addr3.address,
+        addr4.address,
+      ];
+      // we increase the quorum to 5 and redeploy for testing
+      const quorum = 5;
+
+      const multiSig = await multiSIG.deploy(quorum, validSigners);
+
+      const validSigner = addr1;
+      await expect(
+        multiSig.initiateDeleteSigner(validSigner.address)
+      ).to.be.revertedWithCustomError(
+        multiSig,
+        "QuorumCannotBeMoreThanValidSigners"
+      );
+    });
+
+    it("Should revert if trying to delete an invalid signer", async function () {
+      const {
+        multiSig,
+        owner,
+        addr1,
+        addr5,
+        addr6,
+        token,
+        quorum,
+        validSigners,
+      } = await loadFixture(deployMultiSig);
+      const invalidSigner = addr6;
+      await expect(
+        multiSig.initiateDeleteSigner(invalidSigner)
+      ).to.be.revertedWithCustomError(multiSig, "NotAValidSigner");
+    });
+
+    it("Should initiate delete Valid Signer transaction successfully", async function () {
+      const { multiSig, owner, addr1, addr6, token, quorum, validSigners } =
+        await loadFixture(deployMultiSig);
+
+      const txCount = 1;
+
+      const validSigner = addr1;
+
+      await multiSig.initiateDeleteSigner(validSigner);
+      expect(await multiSig.txCounter()).to.equal(txCount);
+
+      const tx = await multiSig.transactions(txCount);
+      expect(tx.id).to.equal(txCount);
+      expect(tx.sender).to.equal(owner);
+      expect(tx.tokenAddress).to.equal(ZeroAddress);
+      expect(tx.receiver).to.equal(validSigner);
+      expect(tx.amount).to.equal(0);
+      expect(tx.isCompleted).to.equal(false);
+    });
+  });
+
+  describe("Approve Delete Valid Signer", function () {
+    it("Should approve a Delete Valid Signer transaction successfully", async function () {
+      const { multiSig, owner, token, addr1, addr2 } = await loadFixture(
+        deployMultiSig
+      );
+
+      const validSigner = addr1;
+      // owner initiates a transfer to addr1
+      await multiSig.initiateDeleteSigner(validSigner);
+
+      const txCount = 1;
+      const txId = 1;
+
+      await multiSig.connect(addr2).approve(txId);
+
+      await expect((await multiSig.transactions(txId)).noOfApprovals).to.equal(
+        txCount + 1
+      );
+    });
+
+    it("Should Delete a Valid Signer successfully if quorum is reached", async function () {
+      const { multiSig, owner, token, addr1, addr2, addr3, addr4, quorum } =
+        await loadFixture(deployMultiSig);
+
+      const validSigner = addr1;
+      // owner wants to delete  addr1
+      await multiSig.initiateDeleteSigner(validSigner);
+
+      const txId = 1;
+
+      await multiSig.connect(addr2).approve(txId);
+      await multiSig.connect(addr3).approve(txId);
+
+      const tx = await multiSig.transactions(txId);
+
+      // we expect the quorum to have been reached
+      await expect(tx.noOfApprovals).to.equal(quorum);
+
+      // we expect the transaction to be complete
+      expect(tx.isCompleted).to.equal(true);
+
+
+      // the signer has been deleted
+      await expect(await multiSig.validSigners(addr1)).to.equal(false);
     });
   });
 });

@@ -19,6 +19,7 @@ library Errors {
 
 // events library
 library MyEvents {
+    // initiated transaction events
     event TransferInitiated(
         address indexed _sender,
         address indexed _to,
@@ -38,8 +39,14 @@ library MyEvents {
         address indexed _newValidSigner
     );
 
+    event DeleteSignerInitiated(
+        address indexed _sender,
+        address indexed _removedSigner
+    );
+
     event TransactionApproved();
 
+    // completed transaction events
     event TransactionCompleted(
         address indexed _sender,
         address indexed _to,
@@ -52,5 +59,10 @@ library MyEvents {
      event ValidSignersUpdateSuccessful(
         address indexed _sender,
         address indexed _newValidSigner
+    );
+
+    event DeleteSignerSuccessful(
+        address indexed _sender,
+        address indexed _removedSigner
     );
 }
