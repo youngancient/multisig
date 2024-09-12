@@ -8,8 +8,8 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract MultiSig is ReentrancyGuard {
-    uint8 public quorum; // remove public
-    uint8 public noOfValidSigners; // remove public
+    uint256 public quorum; // remove public
+    uint256 public noOfValidSigners; // remove public
     uint256 public txCounter; // remove public
 
     enum TxType {
@@ -56,7 +56,7 @@ contract MultiSig is ReentrancyGuard {
         return IERC20(_tokenAddress).balanceOf(address(this));
     }
 
-    constructor(uint8 _quorum, address[] memory _validSigners) {
+    constructor(uint256 _quorum, address[] memory _validSigners, address _deployer) {
         if (_validSigners.length < 1) {
             revert Errors.ValidSignersTooFew();
         }
@@ -75,11 +75,11 @@ contract MultiSig is ReentrancyGuard {
             validSigners[_validSigners[i]] = true;
         }
 
-        noOfValidSigners = uint8(_validSigners.length);
+        noOfValidSigners = _validSigners.length;
 
         // checks if the deployer is a valid signer and adds his address
-        if (!validSigners[msg.sender]) {
-            validSigners[msg.sender] = true;
+        if (!validSigners[_deployer]) {
+            validSigners[_deployer] = true;
             noOfValidSigners += 1;
         }
 
@@ -94,7 +94,7 @@ contract MultiSig is ReentrancyGuard {
     struct Transaction {
         uint256 id;
         bool isCompleted;
-        uint8 noOfApprovals;
+        uint256 noOfApprovals;
         address sender;
         address receiver;
         address tokenAddress;
@@ -164,7 +164,7 @@ contract MultiSig is ReentrancyGuard {
         emit MyEvents.ValidSignersUpdateSuccessful(msg.sender, _newValidSigner);
     }
 
-    function _updateQuorum(uint8 _quorum) private {
+    function _updateQuorum(uint256 _quorum) private {
         zeroValueCheck(_quorum);
         if (_quorum > noOfValidSigners) {
             revert Errors.QuorumCannotBeMoreThanValidSigners();
@@ -218,7 +218,7 @@ contract MultiSig is ReentrancyGuard {
             } else if (trx.transactionType == TxType.UpdateQuorum) {
                 // calls the update function. this function carries out the necessary checks
                 // @dev : INTERACTION
-                _updateQuorum(uint8(trx.amount));
+                _updateQuorum(trx.amount);
             } else if (trx.transactionType == TxType.UpdateValidSigners) {
                 // the receiver in this case the the address of the newSigner to be added
                 // @dev : INTERACTION
@@ -344,7 +344,7 @@ contract MultiSig is ReentrancyGuard {
             revert Errors.NotAValidSigner();
         }
 
-        uint8 _newNoOfValidSigners = noOfValidSigners - 1;
+        uint256 _newNoOfValidSigners = noOfValidSigners - 1;
         // we check if the new number of valid signers is greater of equal to the Quorum
         if (quorum > _newNoOfValidSigners) {
             revert Errors.QuorumCannotBeMoreThanValidSigners();

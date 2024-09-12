@@ -16,7 +16,7 @@ describe("MultiSig Contract", function () {
     // Contracts are deployed using the first signer/account by default
     const [owner, otherAccount] = await hre.ethers.getSigners();
     // token we are using to test
-    const erc20Token = await hre.ethers.getContractFactory("ClownToken");
+    const erc20Token = await hre.ethers.getContractFactory("CToken");
     const token = await erc20Token.deploy();
 
     return { token };
@@ -32,7 +32,6 @@ describe("MultiSig Contract", function () {
     const multiSIG = await hre.ethers.getContractFactory("MultiSig");
 
     const validSigners = [
-      owner.address,
       addr1.address,
       addr2.address,
       addr3.address,
@@ -40,7 +39,7 @@ describe("MultiSig Contract", function () {
     ];
     const quorum = 3;
 
-    const multiSig = await multiSIG.deploy(quorum, validSigners);
+    const multiSig = await multiSIG.deploy(quorum, validSigners, owner.address);
 
     return {
       multiSig,
@@ -64,7 +63,8 @@ describe("MultiSig Contract", function () {
         deployMultiSig
       );
       expect(await multiSig.quorum()).to.equal(quorum);
-      expect(await multiSig.noOfValidSigners()).to.equal(validSigners.length);
+      // the owner is the extra signer
+      expect(await multiSig.noOfValidSigners()).to.equal(validSigners.length + 1);
     });
 
     it("Should set all the addresses passed in as valid signers including the deployer", async function () {
@@ -82,7 +82,8 @@ describe("MultiSig Contract", function () {
       const { multiSig, owner, quorum, validSigners } = await loadFixture(
         deployMultiSig
       );
-      expect(await multiSig.noOfValidSigners()).to.equal(validSigners.length);
+      // the owner is the extra signer
+      expect(await multiSig.noOfValidSigners()).to.equal(validSigners.length + 1);
     });
   });
 
@@ -483,7 +484,6 @@ describe("MultiSig Contract", function () {
       const multiSIG = await hre.ethers.getContractFactory("MultiSig");
 
       const validSigners = [
-        owner.address,
         addr1.address,
         addr2.address,
         addr3.address,
@@ -492,7 +492,7 @@ describe("MultiSig Contract", function () {
       // we increase the quorum to 5 and redeploy for testing
       const quorum = 5;
 
-      const multiSig = await multiSIG.deploy(quorum, validSigners);
+      const multiSig = await multiSIG.deploy(quorum, validSigners, owner.address);
 
       const validSigner = addr1;
       await expect(

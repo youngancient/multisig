@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-contract ClownToken is ERC20("Clown Token", "CLTK") {
+contract CToken is ERC20("Clown Token", "CLTK") {
     address public owner;
 
     constructor() {
